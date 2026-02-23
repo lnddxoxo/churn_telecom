@@ -1,0 +1,53 @@
+---
+title: "quarto"
+format: html
+editor: visual
+---
+
+```{r}
+churn<-read.csv("./WA_Fn-UseC_-Telco-Customer-Churn.csv",header=TRUE,sep=",")
+str(churn)
+summary(churn)
+naChurn<-colSums(is.na(churn))
+print(naChurn)
+
+
+churn<-na.omit(churn)
+
+na_churn<-colSums(is.na(churn))
+print(na_churn)
+
+
+head(churn)
+tail(churn)
+
+```
+
+You can add options to executable code like this
+
+```{r}
+library(ggplot2)
+
+vars_pure_quali_orig <- c("gender", "Partner", "Dependents", "MultipleLines", 
+                          "InternetService", "OnlineSecurity", "OnlineBackup", 
+                          "DeviceProtection", "TechSupport", "StreamingTV", 
+                          "StreamingMovies", "Contract", "PaperlessBilling", 
+                          "PaymentMethod")
+
+# 2. La boucle directe (plus de fonction externe pour l'instant, on veut que ça sorte !)
+for (v in vars_pure_quali_orig) {
+  
+  # On crée le graphique en isolant la colonne avec churn[[v]]
+  p <- ggplot(churn, aes(x = churn[[v]], fill = churn[[v]])) +
+    geom_bar() +
+    geom_text(stat = 'count', aes(label = after_stat(count)), vjust = -0.5) +
+    theme_minimal() +
+    labs(title = paste("Distribution de :", v), x = v, y = "Nombre de clients") +
+    theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # L'étape CRITIQUE : on force l'affichage
+  print(p)
+}
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
