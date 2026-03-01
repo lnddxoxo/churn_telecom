@@ -5,7 +5,7 @@ editor: visual
 ---
 
 ```{r}
-churn<-read.csv("./WA_Fn-UseC_-Telco-Customer-Churn.csv",header=TRUE,sep=",")
+churn<-read.csv("../WA_Fn-UseC_-Telco-Customer-Churn.csv",header=TRUE,sep=",")
 str(churn)
 summary(churn)
 naChurn<-colSums(is.na(churn))
@@ -50,4 +50,949 @@ for (v in vars_pure_quali_orig) {
 }
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+::: callout-note
+Mettre en place le test de chi 2 entre toutes mes variables et le churn
+:::
+
+```{r}
+##Transformer churn en factor
+churn$Churn<-as.factor(churn$Churn)
+```
+
+```{r}
+##Effectuer le test de chi 2 entr eles variables quali et la variable churn
+##on doit etablir une fonction applique un tableua croisee entre chaque variables quali et la variable churn avec sapply
+
+var_test<-vars_pure_quali_orig
+res_chi2<-sapply(var_test,function(v){
+  tab_c<-table(churn[[v]],churn$Churn)
+  t_chi2<-chisq.test(tab_c)
+  return(t_chi2$p.value)
+})
+res_sort<-sort(res_chi2)
+print(res_sort)
+```
+
+```{r}
+#Verifiez les modalites a faibles effectifs
+for (v in var_test){
+  effectif<-table(churn[[v]])
+  freq<-prop.table(effectif)*100
+  print(effectif)
+  print(round(freq,2))
+}
+```
+
+```{r}
+# 1. Définir le seuil des 5%
+seuil_5_pourcent <- 0.05 * nrow(churn)
+
+# 2. Liste des variables actives
+vars_actives <- c("Partner", "Dependents", "MultipleLines", 
+                  "InternetService", "OnlineSecurity", "OnlineBackup", 
+                  "DeviceProtection", "TechSupport", "StreamingTV", 
+                  "StreamingMovies", "Contract", "PaperlessBilling", 
+                  "PaymentMethod")
+
+# 3. Création du tableau de vérification structuré
+# On utilise sapply pour créer une matrice qui sera ensuite transformée en dataframe
+resultats_structure <- do.call(rbind, lapply(vars_actives, function(v) {
+  
+  # Calcul des effectifs et fréquences pour la variable v
+  eff <- table(churn[[v]])
+  freq <- prop.table(eff) * 100
+  
+  # On combine les infos dans un petit tableau pour cette variable
+  data.frame(
+    Variable = v,
+    Modalite = names(eff),
+    Effectif = as.numeric(eff),
+    Pourcentage = round(as.numeric(freq), 2)
+  )
+}))
+
+# 4. Afficher le tableau final
+print(resultats_structure)
+
+#Verifier les modalites ayant moins de 5%
+modalites_a_regrouper <- resultats_structure[resultats_structure$Pourcentage < 5, ]
+
+# 3. Afficher le résultat
+print("--- Modalités à vérifier (< 5%) ---")
+if (nrow(modalites_a_regrouper) > 0) {
+  print(modalites_a_regrouper)
+} else {
+  print("Aucune modalité en dessous de 5%. Tout est OK !")
+}
+```
+
+```{r}
+library(ggplot2)
+library(purrr)
+library(scales)
+library(dplyr)
+
+# 1. Définition des variables
+vars_quali <- c("gender", "Partner", "Dependents", "MultipleLines", 
+                "InternetService", "OnlineSecurity", "OnlineBackup", 
+                "DeviceProtection", "TechSupport", "StreamingTV", 
+                "StreamingMovies", "Contract", "PaperlessBilling", 
+                "PaymentMethod")
+
+vars_quanti <- c("tenure", "MonthlyCharges", "TotalCharges")
+
+# 2. Barplot empilé en pourcentage (Quali vs Churn)
+walk(vars_quali, function(v) {
+  p <- ggplot(churn, aes(x = .data[[v]], fill = Churn)) +
+    # position = "fill" calcule automatiquement les pourcentages
+    geom_bar(position = "fill", alpha = 0.85) + 
+    scale_y_continuous(labels = percent) +
+    scale_fill_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = paste("Taux de Churn selon", v),
+         x = v, y = "Proportion", fill = "Churn")
+  
+  print(p)
+})
+
+# 3. Barplot côte à côte (Quali vs Churn — Volumes)
+walk(vars_quali, function(v) {
+  p <- ggplot(churn, aes(x = .data[[v]], fill = Churn)) +
+    geom_bar(position = "dodge", alpha = 0.85) +
+    scale_fill_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = paste("Nombre de Churn selon", v),
+         x = v, y = "Nombre de clients", fill = "Churn")
+  
+  print(p)
+})
+
+# 4. Boxplot + Densité (Quanti vs Churn)
+walk(vars_quanti, function(v) {
+  # Boxplot
+  p1 <- ggplot(churn, aes(x = Churn, y = .data[[v]], fill = Churn)) +
+    geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+    geom_jitter(aes(color = Churn), width = 0.15, alpha = 0.15, size = 0.8) +
+    scale_fill_manual(values  = c("No" = "#2196F3", "Yes" = "#F44336")) +
+    scale_color_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+    theme_minimal() +
+    labs(title = paste("Boxplot de", v, "selon Churn"),
+         x = "Churn", y = v) +
+    theme(legend.position = "none")
+  
+  # Densité
+  p2 <- ggplot(churn, aes(x = .data[[v]], fill = Churn)) +
+    geom_density(alpha = 0.5) +
+    scale_fill_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+    theme_minimal() +
+    labs(title = paste("Densité de", v, "selon Churn"),
+         x = v, y = "Densité", fill = "Churn")
+  
+  print(p1)
+  print(p2)
+})
+```
+
+```{r}
+##Recoder les modalites "No INternet service" redondantes en no
+
+
+library(FactoMineR)
+
+# 1. Variables où "No internet service" doit être recodé en "No"
+vars_internet_dep <- c("OnlineSecurity", "OnlineBackup", "DeviceProtection",
+                       "TechSupport", "StreamingTV", "StreamingMovies")
+
+for (v in vars_internet_dep){
+  churn[[v]]<-as.character(churn[[v]])
+  churn[[v]][churn[[v]]=="No internet service"]<-"No"
+  churn[[v]]<-as.factor(churn[[v]])
+}
+
+churn$MultipleLines<-as.character(churn$MultipleLines)
+churn$MultipleLines[churn$MultipleLines=="No phone service"]<-"No"
+churn$MultipleLines<-as.factor(churn$MultipleLines)
+
+#Verification :La modalite "No phone service" et "No internet service" ont disparu
+
+table(churn$MultipleLines)
+table(churn$OnlineSecurity)
+```
+
+```{r}
+##Creation de tableau disjonctif complet(TDC
+
+library(dplyr)
+
+vars_quali_filtree <- c("Partner", "Dependents", "MultipleLines", 
+                        "InternetService", "OnlineSecurity", "OnlineBackup", 
+                        "DeviceProtection", "TechSupport", "StreamingTV", 
+                        "StreamingMovies", "Contract", "PaperlessBilling", 
+                        "PaymentMethod")
+
+# 2. Création du dataframe actif filtré
+data_active <-dplyr::select(churn,all_of(vars_quali_filtree))
+
+# 3. Création du TDC sans gender
+tdc <- tab.disjonctif(data_active)
+print(tdc)
+dim(tdc)
+
+#L ACM
+
+res_acm<-MCA(data_active,graph=FALSE)
+```
+
+```{r}
+
+library(factoextra)
+#Resultat des valeurs propres
+
+res_eig<-get_eigenvalue(res_acm)
+print(res_eig)
+```
+
+```{r}
+##Correction du taux d'inertie
+J      <- ncol(data_active)   # nombre de variables
+
+lambda <- res_acm$eig[, 1]    # valeurs propres BRUTES (pas les %)
+
+seuil  <- 1 / J               # seuil = 1/J
+
+
+
+# Formule : si λs > 1/J → λ_corr = [(J/J-1) × (λs - 1/J)]²
+
+lambda_corr <- ifelse(
+
+  lambda > seuil,
+
+  ((J / (J - 1)) * (lambda - seuil))^2,
+
+  0
+
+)
+
+
+
+# Taux corrigés
+
+taux_corr_pct <- lambda_corr / sum(lambda_corr) * 100
+
+taux_cum_corr <- cumsum(taux_corr_pct)
+
+
+
+# Tableau final
+
+df_benz <- data.frame(
+
+  Dimension           = paste("Dim", seq_along(lambda)),
+
+  `λ brut`            = round(lambda, 5),
+
+  `λ corrigé`         = round(lambda_corr, 5),
+
+  `Taux brut (%)`     = round(res_acm$eig[, 2], 2),
+
+  `Taux Benzécri (%)` = round(taux_corr_pct, 2),
+
+  `Taux cumulé (%)`   = round(taux_cum_corr, 2),
+
+  check.names = FALSE
+
+) |> dplyr::filter(`λ corrigé` > 0)
+
+
+
+print(df_benz)
+```
+
+```{r}
+#Identification des axes structurants
+
+fviz_mca_var(res_acm,repel = TRUE)
+```
+
+```{r}
+library(factoextra)
+
+#Determinons les contributions des variables
+res_contrib<-get_mca_var(res_acm)$contrib
+print("Contribution des modalites:")
+print(round(res_contrib,2))
+```
+
+```{r}
+
+cos2_var <- get_mca_var(res_acm)$cos2
+print("Qualité de représentation (Cos2) des modalités :")
+print(round(cos2_var, 2))
+```
+
+```{r}
+fviz_mca_ind(res_acm,label="none",alpha.ind = 0.5)
+```
+
+```{r}
+#Graphique des variables corriges 
+seuil_contrib<-100/nrow(res_acm$var$contrib)
+fviz_mca_var(res_acm,repel=TRUE,
+             select.var = list(contrib=15),
+                               col.var="contrib",
+                               gradient.cols = c("#FFA726","#E53935"),
+                               labelsize = 4)+
+               labs(title="Plan factoriel ACM, Top 15 modalites",subtitle = paste("Seuil de contribution ",round(seuil_contrib,2),"%"))+
+               theme_minimal()
+```
+
+```{r}
+
+# Graphique individus coloré par Churn
+fviz_mca_ind(res_acm,
+             habillage     = churn$Churn,
+             palette       = c("#2196F3","#F44336"),
+             addEllipses   = TRUE,
+             ellipse.level = 0.95,
+             geom          = "point",
+             alpha.ind     = 0.3,
+             pointsize     = 1) +
+  labs(title    = "Nuage des individus",
+       subtitle = "Ellipses 95% — Rouge = Churn") +
+  theme_minimal()
+```
+
+```{r}
+res_acm_illus <- MCA(
+  cbind(data_active, Churn = churn$Churn),
+  quali.sup = ncol(data_active) + 1,
+  graph = FALSE
+)
+
+```
+
+```{r}
+library(factoextra)
+library(cluster)
+
+# ── ÉTAPE 1 : Coordonnées sur 4 axes ──────────────────────────
+coords_cah <- res_acm$ind$coord[, 1:4]
+
+# ── ÉTAPE 2 : Matrice de distances (euclidienne) ───────────────
+dist_mat <- dist(coords_cah, method = "euclidean")
+
+# ── ÉTAPE 3 : CAH avec Ward.D2 ────────────────────────────────
+cah <- hclust(dist_mat, method = "ward.D2")
+
+
+```
+
+```{r}
+# ── ÉTAPE 4 : Dendrogramme ────────────────────────────────────
+fviz_dend(cah,
+          k              = 4,        # on suggère 4 pour l'instant
+          cex            = 0.5,
+          palette        = "Set1",
+          rect           = TRUE,
+          rect_fill      = TRUE,
+          rect_border    = "Set1",
+          show_labels    = FALSE) +
+  labs(title    = "Dendrogramme CAH — Méthode Ward.D2",
+       subtitle = "Coordonnées ACM (4 axes)") +
+  theme_minimal()
+```
+
+```{r}
+# ── ÉTAPE 5 : Hauteurs de fusion (coude) ──────────────────────
+# Pour choisir le bon nombre de clusters
+
+hauteurs <- sort(cah$height, decreasing = TRUE)[1:15]
+
+data.frame(
+  Etape    = 1:15,
+  Hauteur  = round(hauteurs, 4),
+  Delta    = round(c(NA, diff(hauteurs)), 4)
+) |> print()
+
+# Graphique du coude
+plot(1:15, hauteurs,
+     type = "b", pch = 19,
+     col  = "#1565C0",
+     xlab = "Nombre de clusters",
+     ylab = "Hauteur de fusion",
+     main = "Critère du coude — CAH Ward.D2")
+abline(v = 4, col = "red", lty = 2)
+```
+
+```{r}
+# ── ÉTAPE 6 : Découpe de l'arbre ──────────────────────────────
+K <- 4  
+classes_cah <- cutree(cah, k = K)
+table(classes_cah)
+
+```
+
+```{r}
+# ── OPTION 1 : plot() de base — RAPIDE ─────────────────────────
+plot(cah,
+     labels = FALSE,      # ne pas afficher les labels
+     hang   = -1,
+     main   = "Dendrogramme CAH — Ward.D2",
+     xlab   = "Individus",
+     ylab   = "Hauteur de fusion")
+
+# Ajouter les rectangles pour K=4
+rect.hclust(cah, k = 4, border = c("red","blue","green","orange"))
+```
+
+```{r}
+# ── OPTION 2 : Graphique du coude UNIQUEMENT — TRÈS RAPIDE ─────
+# C'est suffisant pour choisir K !
+
+hauteurs <- sort(cah$height, decreasing = TRUE)[1:10]
+
+plot(1:10, hauteurs,
+     type = "b",
+     pch  = 19,
+     col  = "#1565C0",
+     xlab = "Nombre de clusters (K)",
+     ylab = "Hauteur de fusion",
+     main = "Critère du coude — Choix de K")
+
+# Annoter les points
+text(1:10, hauteurs,
+     labels = round(hauteurs, 3),
+     pos = 3, cex = 0.8)
+```
+
+```{r}
+# ── OPTION 3 : Indice de Silhouette — RAPIDE ───────────────────
+library(cluster)
+
+silhouette_scores <- c()
+
+for (k in 2:6) {
+  classes <- cutree(cah, k = k)
+  sil     <- silhouette(classes, dist_mat)
+  silhouette_scores[k] <- mean(sil[, 3])
+}
+
+plot(2:6, silhouette_scores[2:6],
+     type = "b", pch = 19,
+     col  = "#E53935",
+     xlab = "Nombre de clusters K",
+     ylab = "Score Silhouette moyen",
+     main = "Silhouette — Choix optimal de K")
+```
+
+```{r}
+# ── ELLIPSES DES CLUSTERS SUR PLAN ACM ────────────────────────
+
+library(factoextra)
+library(ggplot2)
+
+# Visualisation clusters K-Means sur plan factoriel ACM
+fviz_mca_ind(res_acm,
+             habillage     = churn$Cluster,
+             palette       = c("#F44336","#2196F3","#4CAF50","#FF9800"),
+             addEllipses   = TRUE,
+             ellipse.type  = "convex",  
+             ellipse.level = 0.95,
+             geom          = "point",
+             alpha.ind     = 0.4,
+             pointsize     = 1.2) +
+  labs(title    = "Clusters K-Means sur Plan Factoriel ACM",
+       subtitle = "K=4 — Ellipses de concentration à 95%",
+       x = "Dim 1 — Niveau d'équipement digital (20.3%)",
+       y = "Dim 2 — Engagement contractuel (13.4%)",
+       color = "Cluster", fill = "Cluster") +
+  theme_minimal()
+```
+
+```{r}
+# ── VERSION AVEC ELLIPSES DE CONFIANCE (plus rigoureuse) ──────
+fviz_mca_ind(res_acm,
+             habillage     = churn$Cluster,
+             palette       = c("#F44336","#2196F3","#4CAF50","#FF9800"),
+             addEllipses   = TRUE,
+             ellipse.type  = "norm",    # ellipse normale
+             ellipse.level = 0.95,
+             geom          = "point",
+             alpha.ind     = 0.3,
+             pointsize     = 1) +
+  labs(title    = "Clusters K-Means sur Plan Factoriel ACM",
+       subtitle = "Ellipses normales à 95% — Validation de la segmentation",
+       x = "Dim 1 (20.3%)",
+       y = "Dim 2 (13.4%)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+# ── BIPLOT CLUSTERS + MODALITÉS ───────────────────────────────
+# Pour voir quelles modalités caractérisent chaque cluster
+
+# Graphique des individus par cluster
+p_ind <- fviz_mca_ind(res_acm,
+                      habillage    = churn$Cluster,
+                      palette      = c("#F44336","#2196F3","#4CAF50","#FF9800"),
+                      addEllipses  = TRUE,
+                      ellipse.level = 0.90,
+                      geom         = "point",
+                      alpha.ind    = 0.3,
+                      pointsize    = 0.8)
+
+# Graphique des modalités top 15
+p_var <- fviz_mca_var(res_acm,
+                      select.var = list(contrib = 15),
+                      repel      = TRUE,
+                      col.var    = "darkblue",
+                      labelsize  = 3)
+
+# Superposition manuelle
+p_ind +
+  geom_point(data = as.data.frame(res_acm$var$coord[, 1:2]) |>
+               tibble::rownames_to_column("modalite") |>
+               dplyr::slice_max(order_by = rowSums(res_acm$var$contrib[,1:2]),
+                                n = 15),
+             aes(x = `Dim 1`, y = `Dim 2`),
+             color = "darkblue", size = 3, shape = 17,
+             inherit.aes = FALSE) +
+  labs(title    = "Biplot — Clusters & Modalités caractéristiques",
+       subtitle = "▲ = modalités les plus contributives") +
+  theme_minimal()
+```
+
+```{r}
+# Découpe à K=4
+K <- 4
+classes_cah <- cutree(cah, k = K)
+cat("Répartition CAH :\n")
+print(table(classes_cah))
+
+# Consolidation K-Means
+set.seed(42)
+km <- kmeans(coords_cah, centers = K, nstart = 25, iter.max = 100)
+cat("\nRépartition K-Means :\n")
+print(table(km$cluster))
+
+# Comparaison CAH vs K-Means
+cat("\nTableau de concordance CAH vs K-Means :\n")
+print(table(CAH = classes_cah, KMeans = km$cluster))
+
+# Ajouter au dataframe
+churn$Cluster_CAH   <- factor(classes_cah)
+churn$Cluster_KMeans <- factor(km$cluster)
+```
+
+```{r}
+# Finalisation
+churn$Cluster <- factor(km$cluster,
+                        labels = c("Cluster 1", "Cluster 2",
+                                   "Cluster 3", "Cluster 4"))
+table(churn$Cluster)
+```
+
+```{r}
+# ── PROFILING COMPLET DES CLUSTERS ────────────────────────────
+install.packages("kableExtra")
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+
+churn |>
+  group_by(Cluster) |>
+  summarise(
+    `Nb clients`       = n(),
+    `% du total`       = round(n() / nrow(churn) * 100, 1),
+    `Taux Churn (%)`   = round(mean(Churn == "Yes") * 100, 1),
+    `Ancienneté moy.`  = round(mean(tenure), 1),
+    `Charge mens. moy` = round(mean(MonthlyCharges), 1),
+    .groups = "drop"
+  ) |>
+  kable(caption = "Synthèse des 4 clusters") |>
+  kable_styling(bootstrap_options = c("striped","hover","bordered"))
+```
+
+```{r}
+# ── 2. Profil contractuel par cluster ─────────────────────────
+churn |>
+  group_by(Cluster, Contract) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(Cluster) |>
+  mutate(pct = round(n / sum(n) * 100, 1)) |>
+  select(-n) |>
+  tidyr::pivot_wider(names_from = Contract, values_from = pct) |>
+  kable(caption = "Type de contrat par cluster (%)") |>
+  kable_styling(bootstrap_options = c("striped","hover"))
+```
+
+```{r}
+# ── 3. Profil Internet par cluster ────────────────────────────
+churn |>
+  group_by(Cluster, InternetService) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(Cluster) |>
+  mutate(pct = round(n / sum(n) * 100, 1)) |>
+  select(-n) |>
+  tidyr::pivot_wider(names_from = InternetService, values_from = pct) |>
+  kable(caption = "Type Internet par cluster (%)") |>
+  kable_styling(bootstrap_options = c("striped","hover"))
+```
+
+```{r}
+# ── 4. Test Khi-deux — Churn vs Cluster ───────────────────────
+chi2 <- chisq.test(table(churn$Cluster, churn$Churn))
+cat("Test Khi-deux Cluster vs Churn :\n")
+cat("Chi² =", round(chi2$statistic, 2), "\n")
+cat("p-value =", format.pval(chi2$p.value, digits = 3), "\n")
+cat("Conclusion :", 
+    ifelse(chi2$p.value < 0.05, 
+           "✅ Lien significatif entre Cluster et Churn",
+           "❌ Pas de lien significatif"), "\n")
+```
+
+```{r}
+# ── 5. Visualisation Churn par cluster ────────────────────────
+library(ggplot2)
+
+churn |>
+  group_by(Cluster, Churn) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(Cluster) |>
+  mutate(pct = n / sum(n)) |>
+  ggplot(aes(x = Cluster, y = pct, fill = Churn)) +
+  geom_col(alpha = 0.85) +
+  geom_text(aes(label = scales::percent(pct, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            color = "white", fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title    = "Taux de Churn par Cluster",
+       subtitle = "K-Means K=4 sur axes ACM",
+       x = "Cluster", y = "Proportion") +
+  theme_minimal()
+```
+
+::: callout-note
+```         
+
+---
+
+## 🎯 Mais surtout — Tes résultats sont EXTRAORDINAIRES !
+
+Voici l'interprétation et les **noms métier** des clusters :
+
+| Cluster | Taux Churn | Contrat | Internet | Ancienneté | Nom métier |
+|---------|-----------|---------|----------|------------|------------|
+| **C1** | 🔴 **52.7%** | 89% mensuel | 95% Fibre | 24 mois | **"Les Fugitifs Fibre"** |
+| **C2** | 🟢 **8.6%** | 40% Two year | 96% **Sans internet** | 30 mois | **"Les Fidèles Téléphonie"** |
+| **C3** | 🟢 **9.2%** | 56% Two year | 53% DSL | 56 mois | **"Les Loyaux DSL"** |
+| **C4** | 🟡 **27.2%** | 76% mensuel | 89% DSL | 20 mois | **"Les Précaires DSL"** |
+
+---
+
+## 📋 Interprétation complète
+
+**Cluster 1 — "Les Fugitifs Fibre" 🔴**
+```
+
+→ Churn 52.7% — le plus dangereux ! → 95% Fibre optique + 89% contrat mensuel → Charges élevées (86.6\$) mais ancienneté faible → Profil : clients attirés par la Fibre mais pas fidélisés → ACTION : Offre de migration vers contrat annuel URGENTE
+
+```         
+
+**Cluster 2 — "Les Fidèles Téléphonie" 🟢**
+```
+
+→ Churn 8.6% — quasi inexistant → 96% sans internet — clients téléphonie pure → Charges très faibles (23.2\$) → Profil : clients simples, stables, peu rentables → ACTION : Upsell Internet DSL
+
+```         
+
+**Cluster 3 — "Les Loyaux DSL" 🟢**
+```
+
+→ Churn 9.2% — très faible → 56% contrat Two year + ancienneté 56 mois ! → 53% DSL — clients établis → Profil : clients fidèles premium → ACTION : Programme ambassadeur / parrainage
+
+```         
+
+**Cluster 4 — "Les Précaires DSL" 🟡**
+```
+
+→ Churn 27.2% — risque modéré → 76% contrat mensuel + DSL → Ancienneté faible (20 mois) → Profil : clients récents non engagés → ACTION : Migration vers contrat annuel
+
+```         
+
+---
+
+## ✅ Conclusion Khi-deux
+```
+
+Chi² = 1286.43, p \< 2e-16 → La segmentation est statistiquement très significative → Le Cluster explique fortement le Churn → Parfait pour justifier la démarche dans ton rapport !
+:::
+
+```{r}
+# ── SILHOUETTE PAR INDIVIDU ────────────────────────────────────
+library(cluster)
+
+sil <- silhouette(km$cluster, dist_mat)
+sil_df <- as.data.frame(sil[, 1:3])
+colnames(sil_df) <- c("Cluster", "Voisin", "Silhouette")
+
+# Score moyen par cluster
+sil_df |>
+  mutate(Cluster = paste("Cluster", Cluster)) |>
+  group_by(Cluster) |>
+  summarise(
+    `Score Silhouette moyen` = round(mean(Silhouette), 3),
+    `% bien classés (>0)`    = round(mean(Silhouette > 0) * 100, 1),
+    `% mal classés (<0)`     = round(mean(Silhouette < 0) * 100, 1)
+  ) |>
+  kable(caption = "Qualité de classification par cluster") |>
+  kable_styling(bootstrap_options = c("striped","hover","bordered"))
+```
+
+```{r}
+# ── VISUALISATION SILHOUETTE ───────────────────────────────────
+fviz_silhouette(sil,
+                palette      = c("#F44336","#2196F3","#4CAF50","#FF9800"),
+                ggtheme      = theme_minimal()) +
+  labs(title    = "Graphique de Silhouette — K=4",
+       subtitle = "Score > 0 = bien classé | Score < 0 = mal classé")
+```
+
+```{r}
+# ── QUI SONT LES INDIVIDUS MAL CLASSÉS ? ──────────────────────
+sil_df$Cluster_km <- churn$Cluster
+
+mal_classes <- sil_df |>
+  filter(Silhouette < 0) |>
+  mutate(Cluster = paste("Cluster", Cluster),
+         Voisin  = paste("Cluster", Voisin))
+
+cat("Nombre d'individus mal classés :", nrow(mal_classes), "\n")
+cat("Soit", round(nrow(mal_classes)/nrow(churn)*100, 1), "% du total\n\n")
+
+# Où vont-ils ?
+table(mal_classes$Cluster, mal_classes$Voisin) |>
+  kable(caption = "Individus mal classés — Cluster actuel vs Cluster voisin") |>
+  kable_styling(bootstrap_options = c("striped","hover"))
+```
+
+::: callout-note
+## Stratégie Marketing — Les 4 Segments
+
+|   | **Cluster 1** 🔴 | **Cluster 2** 🟢 | **Cluster 3** 🟢 | **Cluster 4** 🟡 |
+|----|----|----|----|----|
+| **Nom** | Fugitifs Fibre | Fidèles Téléphonie | Loyaux DSL | Précaires DSL |
+| **Taux Churn** | 52.7% | 8.6% | 9.2% | 27.2% |
+| **Taille** | 2178 (31%) | 1586 (23%) | 1690 (24%) | 1578 (22%) |
+| **Profil** | Fibre + mensuel + seul | Sans internet + stable | DSL + Two year + famille | DSL + mensuel + récent |
+| **Risque** | 🔴 CRITIQUE | 🟢 FAIBLE | 🟢 FAIBLE | 🟡 MODÉRÉ |
+
+### 🔴 Cluster 1 — "Fugitifs Fibre" — PRIORITÉ ABSOLUE
+
+**Problème :** Client attiré par la Fibre mais pas fidélisé. Paye cher (86\$/mois) sans engagement.
+
+**Actions :**
+
+-   
+
+-   🎯 **Action 1** : Offre de rétention immédiate — migration contrat annuel avec **remise de 15%**
+
+-   
+
+-   🎯 **Action 2** : Appel proactif du service client dans les **30 premiers jours**
+
+-   
+
+-   🎯 **Action 3** : Bundle groupé Fibre + Sécurité + Streaming à tarif fixe
+
+-   
+
+**KPI cible :** Réduire le churn de 52.7% → 35% en 6 mois
+
+### 🟡 Cluster 4 — "Précaires DSL" — SURVEILLANCE ACTIVE
+
+**Problème :** Client récent (20 mois), pas encore engagé, risque de partir si pas de valeur perçue.
+
+**Actions :**
+
+-   
+
+-   🎯 **Action 1** : Programme onboarding **0-12 mois** avec bonus fidélité
+
+-   
+
+-   🎯 **Action 2** : Proposition contrat annuel à **6 mois** d'ancienneté
+
+-   
+
+-   🎯 **Action 3** : Offre découverte sécurité en ligne **3 mois gratuits**
+
+-   
+
+**KPI cible :** Réduire le churn de 27.2% → 18% en 6 mois
+
+### 🟢 Cluster 3 — "Loyaux DSL" — PROGRAMME AMBASSADEUR
+
+**Problème :** Pas de problème — ce sont tes meilleurs clients (56 mois d'ancienneté !).
+
+**Actions :**
+
+-   
+
+-   🎯 **Action 1** : Programme **parrainage** — récompense par mois offert
+
+-   
+
+-   🎯 **Action 2** : Offre de migration vers Fibre avec tarif préférentiel
+
+-   
+
+-   🎯 **Action 3** : Statut **"Client Premium"** avec avantages exclusifs
+
+-   
+
+**KPI cible :** Maintenir churn \< 10% et augmenter panier moyen
+
+### 🟢 Cluster 2 — "Fidèles Téléphonie" — UPSELL
+
+**Problème :** Clients stables mais peu rentables (23\$/mois seulement).
+
+**Actions :**
+
+-   
+
+-   🎯 **Action 1** : Offre découverte **Internet DSL** à prix réduit
+
+-   
+
+-   🎯 **Action 2** : Bundle Téléphone + Internet entrée de gamme
+
+-   
+
+-   🎯 **Action 3** : Communication sur les bénéfices du numérique
+
+-   
+
+**KPI cible :** Convertir 20% vers offre Internet → +15\$/mois/client
+
+## 📊 Matrice de Priorité
+
+```         
+ROI POTENTIEL     ↑     │  C3 Loyaux    C1 Fugitifs     │  (maintenir)  (URGENT)     │     │  C2 Fidèles   C4 Précaires     │  (upsell)     (prévenir)     └─────────────────────────→               URGENCE
+```
+
+Lance maintenant le code des
+:::
+
+```{r}
+# ── ACM CORRECTE AVEC VARIABLES SUPPLÉMENTAIRES ───────────────
+
+# Vérifier les noms exacts de ton dataframe
+names(churn)
+
+# Préparer le dataframe complet ordonné
+data_acm_complet <- churn |>
+  dplyr::select(
+    # ── Variables ACTIVES (13) ──────────────────────────────
+    Partner, Dependents, MultipleLines,
+    InternetService, OnlineSecurity, OnlineBackup,
+    DeviceProtection, TechSupport, StreamingTV,
+    StreamingMovies, Contract, PaperlessBilling,
+    PaymentMethod,
+    # ── Variables QUALI illustratives ──────────────────────
+    gender, Churn,
+    # ── Variables QUANTI illustratives ─────────────────────
+    tenure, MonthlyCharges, TotalCharges
+  )
+
+# Vérifier les positions
+cat("Colonnes 1-13 (actives) :\n")
+print(names(data_acm_complet)[1:13])
+cat("\nColonnes 14-15 (quali.sup) :\n")
+print(names(data_acm_complet)[14:15])
+cat("\nColonnes 16-18 (quanti.sup) :\n")
+print(names(data_acm_complet)[16:18])
+```
+
+```{r}
+# ── LANCER L'ACM AVEC SUPPLÉMENTAIRES ─────────────────────────
+res_acm_complet <- MCA(
+  data_acm_complet,
+  quali.sup  = 14:15,    # gender, Churn
+  quanti.sup = 16:18,    # tenure, MonthlyCharges, TotalCharges
+  ncp        = 5,
+  graph      = FALSE
+)
+```
+
+```{r}
+# ── RÉSULTATS VARIABLES QUALI SUP ─────────────────────────────
+# Règle cours Baffo slide 34 : |vt| > 2 → significatif
+
+cat("=== VALEURS-TEST VARIABLES QUALI SUP ===\n")
+cat("(Significatif si |vt| > 2)\n\n")
+
+vtest <- as.data.frame(res_acm_complet$quali.sup$v.test)
+
+# Churn
+cat("--- CHURN ---\n")
+churn_vt <- data.frame(
+  Modalité  = rownames(vtest)[grepl("Yes|No", rownames(vtest))],
+  `Axe 1`   = round(vtest[grepl("Yes|No", rownames(vtest)), 1], 3),
+  `Axe 2`   = round(vtest[grepl("Yes|No", rownames(vtest)), 2], 3),
+  `Axe 3`   = round(vtest[grepl("Yes|No", rownames(vtest)), 3], 3),
+  `Axe 4`   = round(vtest[grepl("Yes|No", rownames(vtest)), 4], 3),
+  check.names = FALSE
+) |>
+  mutate(
+    `Sig.Ax1` = ifelse(abs(`Axe 1`) > 2, "✅", "❌"),
+    `Sig.Ax2` = ifelse(abs(`Axe 2`) > 2, "✅", "❌"),
+    `Sig.Ax3` = ifelse(abs(`Axe 3`) > 2, "✅", "❌"),
+    `Sig.Ax4` = ifelse(abs(`Axe 4`) > 2, "✅", "❌")
+  )
+print(churn_vt)
+
+# Gender
+cat("\n--- GENDER ---\n")
+gender_vt <- data.frame(
+  Modalité  = rownames(vtest)[grepl("Male|Female", rownames(vtest))],
+  `Axe 1`   = round(vtest[grepl("Male|Female", rownames(vtest)), 1], 3),
+  `Axe 2`   = round(vtest[grepl("Male|Female", rownames(vtest)), 2], 3),
+  check.names = FALSE
+) |>
+  mutate(
+    `Sig.Ax1` = ifelse(abs(`Axe 1`) > 2, "✅", "❌"),
+    `Sig.Ax2` = ifelse(abs(`Axe 2`) > 2, "✅", "❌")
+  )
+print(gender_vt)
+```
+
+```{r}
+# ── VISUALISATION QUANTI SUP SUR PLAN FACTORIEL ───────────────
+fviz_mca_var(res_acm_complet,
+             choice    = "quanti.sup",
+             col.quanti.sup = "#9C27B0",
+             repel     = TRUE,
+             labelsize = 4) +
+  labs(title    = "Variables quantitatives supplémentaires",
+       subtitle = "Projection sur plan factoriel ACM") +
+  theme_minimal()
+```
+
+```{r}
+# ── VISUALISATION QUALI SUP (Churn) SUR PLAN ──────────────────
+fviz_mca_var(res_acm_complet,
+             choice = "quali.sup",
+             col.quali.sup  = "#E91E63",
+             repel          = TRUE,
+             labelsize       = 5) +
+  labs(title    = "Variables qualitatives supplémentaires",
+       subtitle = "Churn et Gender — Valeur-test |vt| > 2") +
+  theme_minimal()
+```
