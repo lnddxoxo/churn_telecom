@@ -1,0 +1,238 @@
+---
+title: "Rapport"
+format: html
+editor: visual
+---
+
+# PROJET D'ANALYSE DES CORRESPONDANCES MULTIPLES (ACM)
+
+## I.THEME:
+
+#### Analyse multidimensionnelle de l'attrition client (Churn) et segmentation stratégique pour la fidélisation dans le secteur des télécommunications. Analyse des correspondances multiples (ACM) appliquée à la segmentation et à la prédiction de l’attrition (Churn) dans le secteur des télécommunications.
+
+### II.CONTEXTE
+
+::: {.callout-note style="color: #0047AB"}
+Dans le secteur hyper-concurrentiel des télécommunications, la rétention des clients (Churn) est un enjeu majeur. Comprendre pourquoi un client résilie son contrat nécessite d'analyser simultanément de nombreux facteurs qualitatifs (type de contrat, services souscrits, mode de paiement). L'Analyse des Correspondances Multiples (ACM) offre un cadre rigoureux pour:\
+ Synthétiser les interactions entre facteurs qualitatifs (contrat, services, paiement).
+
+ Cartographier les profils types de clients (Fidèles vs Volatils).
+
+ Visualiser les corrélations entre habitudes de consommation et résiliation.\
+\
+Dans une économie de l'abonnement, le **taux d'attrition** (Churn) est le "tueur silencieux" de la rentabilité. Acquérir un client coûte cher en marketing (frais d'acquisition) ; le perdre avant qu'il ne soit rentable est une perte nette. Le jeu de données **Telco Customer Churn** permet d'étudier le comportement de 7 043 clients. L'enjeu est de passer d'un marketing réactif (constater le départ) à un **marketing proactif** (prédire et prévenir).\
+
+Le marché des télécommunications est marqué par une volatilité croissante des clients. Dans ce cadre, l'entreprise cherche à valoriser ses données historiques (7 043 clients) pour identifier les leviers de fidélisation. L'enjeu est de passer d'un marketing de masse à une approche prédictive et ciblée.
+:::
+
+### III.PROBLEMATIQUE
+
+::: callout-note
+Comment l'ACM peut-elle identifier des segments de clients à risque pour optimiser les stratégies de rétention ?\
+\
+Dans quelle mesure l'ACM permet-elle de structurer une base de données clients en profils homogènes de risque d'attrition, et comment ces profils peuvent-ils orienter les campagnes de marketing préventif ?\
+\
+Comment les interactions entre les services souscrits (Internet, Support, Streaming) et les conditions contractuelles (Type de contrat, Mode de paiement) définissent-elles des profils à risque de désabonnement ?
+:::
+
+### IV. OBJECTIFS
+
+#### 1. OBJECTIF GLOBAL
+
+#### L'objectif principal est de concevoir une **solution d'aide à la décision marketing** basée sur le Data Mining, permettant de comprendre les mécanismes du Churn et de proposer des leviers de rétention ciblés. Fournir une cartographie décisionnelle des segments de clients pour orienter les campagnes de rétention.
+
+#### 2. OBJECTIF SPECIFIQUES
+
+-   **Préparation :** Standardiser les données et traiter les valeurs manquantes (notamment sur `TotalCharges`).
+
+-   **Analyse Multidimensionnelle :** Utiliser l'**ACM** pour visualiser les proximités entre les services et la résiliation.
+
+-   **Solution Marketing :** Proposer des recommandations basées sur les groupements factoriels observés.
+
+### V. DESCRIPTION DU DATASET
+
+::: {.callout-note style="color: #004953"}
+**Source : [Kaggle - Telco Customer Churn Dataset](https://www.kaggle.com/datasets/blastchar/telco-customer-churn)**
+
+**Taille de l'échantillon : 7 043 clients**
+
+**Unité statistique : Le client, caractérisé par son profil sociodémographique, ses habitudes de consommation de services télécoms et ses modalités contractuelles.\
+**
+:::
+
+### VI. DICTIONNAIRE DES VARIABLES
+
+#### 1.Variables Qualitatives (Actives pour l'ACM)
+
+Ces variables définissent les catégories qui serviront à construire les axes factoriels.
+
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| #### **Nom de la variable** {style="color: #0047AB"} | #### **Description** {style="color: #0047AB"} | #### **Modalités** {style="color: #0047AB"}                  |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`gender`**                                         | Sexe du client                                | {Female, Male}                                               |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`SeniorCitizen`**                                  | Client âgé (65+)                              | {0 (Non), 1 (Oui)}                                           |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`Partner`**                                        | Client en couple                              | {Yes, No}                                                    |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`Dependents`**                                     | Personnes à charge                            | {Yes, No}                                                    |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`PhoneService`**                                   | Service de téléphonie                         | {Yes, No}                                                    |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`MultipleLines`**                                  | Lignes multiples                              | {No phone service, No, Yes}                                  |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`InternetService`**                                | Type de connexion                             | {DSL, Fiber optic, No}                                       |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`OnlineSecurity`**                                 | Sécurité internet                             | {No, Yes, No internet service}                               |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`OnlineBackup`**                                   | Sauvegarde cloud                              | {No, Yes, No internet service}                               |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`DeviceProtection`**                               | Assurance matériel                            | {No, Yes, No internet service}                               |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`TechSupport`**                                    | Assistance technique                          | {No, Yes, No internet service}                               |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`StreamingTV`**                                    | Télévision IP                                 | {No, Yes, No internet service}                               |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`StreamingMovies`**                                | Cinéma en streaming                           | {No, Yes, No internet service}                               |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`Contract`**                                       | Type d'engagement                             | {Month-to-month, One year, Two year}                         |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`PaperlessBilling`**                               | Facture numérique                             | {Yes, No}                                                    |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+| **`PaymentMethod`**                                  | Mode de paiement                              | {Electronic check, Mailed check, Bank transfer, Credit card} |
++------------------------------------------------------+-----------------------------------------------+--------------------------------------------------------------+
+
+### 2. Variables Quantitatives (À discrétiser)
+
++------------------------------------------------------+-----------------------------------------------+------------------------------------------------+
+| #### **Nom de la variable** {style="color: #0047AB"} | #### **Description** {style="color: #0047AB"} | #### **Unité / Type** {style="color: #0047AB"} |
++------------------------------------------------------+-----------------------------------------------+------------------------------------------------+
+| `tenure`                                             | Ancienneté du client                          | Mois (Entier)                                  |
++------------------------------------------------------+-----------------------------------------------+------------------------------------------------+
+| `MonthlyCharges`                                     | Facture mensuelle                             | Dollars (Décimal)                              |
++------------------------------------------------------+-----------------------------------------------+------------------------------------------------+
+| `TotalCharges`                                       | Cumul des factures                            | Dollars (Décimal)                              |
++------------------------------------------------------+-----------------------------------------------+------------------------------------------------+
+
+### Variable Cible (Illustrative)
+
+Variable diagnostique qui ne participe pas à la construction des axes mais qui est projetée pour l'interprétation marketing.
+
+|                    |                           |               |
+|--------------------|---------------------------|---------------|
+| Nom de la Variable | Description               | Modalités     |
+| **`Churn`**        | **Résiliation du client** | **{Yes, No}** |
+
+Après avoir défini le contexte marketing, la problématique de rétention et les objectifs de notre étude, nous avons dressé l'inventaire des 21 variables disponibles.
+
+Nous entamons désormais l'analyse proprement dite. Compte tenu de la nature essentiellement qualitative de nos données (services souscrits, types de contrats, modes de paiement), l'enjeu est de synthétiser cette information via l'**Analyse des Correspondances Multiples (ACM)**.
+
+Cette approche, couplée à une phase de **Clustering (Classification)**, nous permettra d'identifier des segments de clients cohérents et de valider leur pertinence stratégique face à la variable cible **Churn**. L'objectif final est de transformer ces structures statistiques en leviers opérationnels pour le marketing décisionnel.\
+
+```{r}
+#| label: chargement-librairies
+#| warning: false
+#| message: false
+library(FactoMineR)
+library(factoextra)
+library(ggplot2)
+```
+
+### 1. PREPARATION DES DONNEES
+
+#### **a- Importation du dataset** et resume statistique
+
+```{r}
+# Chargement du fichier source
+churn <- read.csv("../WA_Fn-UseC_-Telco-Customer-Churn.csv", header=TRUE, sep=",")
+
+# Aperçu statistique
+str(churn)
+summary(churn)
+
+```
+
+::: {.callout-note style="color: #800020"}
+**L'analyse préliminaire montre la présence de valeurs manquantes (NA) concentrées sur la variable `TotalCharges` (11 cas).\
+Celles-ci correspondent à des nouveaux clients n'ayant pas encore été facturés. Nous optons pour la suppression de ces lignes pour ne pas biaiser les moyennes de consommation.**
+:::
+
+#### b-Nettoyage et gestion des données manquantes
+
+Pour garantir la cohérence de l'Analyse des Correspondances Multiples (ACM), nous devons stabiliser le dataset :
+
+```{r}
+# Vérification des valeurs manquantes (NA)
+colSums(is.na(churn))
+
+# Suppression des 11 lignes présentant des valeurs manquantes dans TotalCharges
+# (correspondant aux nouveaux clients ayant une ancienneté de 0 mois)
+churn <- na.omit(churn)
+
+# Suppression de la colonne customerID (non pertinente pour l'analyse statistique)
+churn <- churn[, -1]
+
+#Verification
+
+na_churn<-colSums(is.na(churn))
+print(na_churn)
+
+```
+
+#### C.Visualisation du dataset
+
+```{r}
+head(churn)
+tail(churn)
+```
+
+::: {.callout-note style="color: #800020"}
+**Le nettoyage a permis d'éliminer les bruits statistiques (11 valeurs manquantes) et de stabiliser le dataset à 7 032 observations. En excluant l'identifiant client (`customerID`), nous avons réduit le jeu de données à ses seules composantes analytiques.**
+
+**Le jeu de données étant désormais propre et structuré, nous pouvons entamer l'exploration de chaque variable pour en comprendre la distribution.**
+:::
+
+### 2. ANALYSE UNIVARIÉE : Exploration des profils
+
+Cette étape permet de comprendre la distribution de chaque variable qualitative. Pour garantir une esthétique homogène (similaire à l'étude sur le risque cardiaque), nous automatisons la génération des graphiques de répartition.
+
+### a- Distribution des variables qualitatives
+
+Nous utilisons une fonction personnalisée basée sur `ggplot2` pour visualiser le poids de chaque modalité (ex: type de contrat, mode de paiement).
+
+```{r}
+#| label: analyse-univariee
+#| fig-cap: "Répartition des variables qualitatives du dataset"
+library(ggplot2)
+
+# Liste des variables pures qualitatives
+vars_quali <- c("gender", "Partner", "Dependents", "MultipleLines", 
+                "InternetService", "OnlineSecurity", "OnlineBackup", 
+                "DeviceProtection", "TechSupport", "StreamingTV", 
+                "StreamingMovies", "Contract", "PaperlessBilling", 
+                "PaymentMethod", "Churn")
+
+# Définition de la fonction de diagnostic univarié adapté
+diag_univ <- function(data, var) {
+  ggplot(data, aes(x = .data[[var]], fill = .data[[var]])) +
+    geom_bar() +
+    geom_text(stat = 'count', aes(label = after_stat(count)), vjust = -0.5) +
+    theme_minimal() +
+    scale_fill_brewer(palette = "Set3") + # Ajout d'une palette de couleurs pro
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "none") +
+    labs(title = paste("Répartition de", var), 
+         x = var, 
+         y = "Nombre d'individus")
+}
+
+# Génération automatique des graphiques
+for (v in vars_quali) {
+  print(diag_univ(churn, v))
+}
+
+```
+
+```{r}
+
+```

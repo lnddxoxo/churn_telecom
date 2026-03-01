@@ -28,7 +28,7 @@ print(na_churn)
 head(churn)
 tail(churn)
 
-
+azcf7
 
 ##ANALYSE UNIVARIEE
 
