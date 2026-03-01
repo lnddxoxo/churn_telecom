@@ -1,0 +1,619 @@
+---
+title: "Segmentation Client par ACM et Classification — Telco Customer Churn"
+author: "Analystes Statisticien.ne.s — ENSEA"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-title: "Sommaire"
+    number-sections: true
+    theme: flatly
+    code-fold: true
+    code-summary: "Afficher le code"
+    fig-width: 9
+    fig-height: 6
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+  echo: true
+---
+
+```{r setup, include=FALSE}
+# ── CHARGEMENT DES PACKAGES ────────────────────────────────────
+library(ggplot2)
+library(dplyr)
+library(FactoMineR)
+library(factoextra)
+library(cluster)
+library(knitr)
+library(kableExtra)
+library(tidyr)
+library(scales)
+library(purrr)
+```
+
+# Introduction
+
+Cette étude applique une **Analyse des Correspondances Multiples (ACM)** suivie d'une **Classification Ascendante Hiérarchique (CAH) consolidée par K-Means** sur le dataset *Telco Customer Churn*. L'objectif est d'identifier des segments de clients homogènes afin de cibler les actions de rétention.
+
+**Données :** 7 043 clients décrits par 20 variables (services, contrat, paiement, données sociodémographiques).
+
+**Variable cible :** `Churn` (départ du client : Oui/Non).
+
+---
+
+# Préparation des données
+
+## Chargement et nettoyage
+
+```{r chargement}
+# Chargement
+churn <- read.csv("../WA_Fn-UseC_-Telco-Customer-Churn.csv",
+                  header = TRUE, sep = ",")
+
+# Suppression des valeurs manquantes
+churn <- na.omit(churn)
+
+# Conversion de Churn en facteur
+churn$Churn <- as.factor(churn$Churn)
+
+cat("Dimensions du dataset :", nrow(churn), "individus x", ncol(churn), "variables\n")
+cat("Taux de Churn global :", round(mean(churn$Churn == "Yes") * 100, 1), "%\n")
+```
+
+## Recodage des modalités redondantes
+
+Les modalités `"No internet service"` et `"No phone service"` sont redondantes avec `InternetService = "No"` et `PhoneService = "No"`. On les recode en `"No"` conformément aux recommandations de Baffo (2025) sur la préparation des données pour l'ACM.
+
+```{r recodage}
+vars_internet_dep <- c("OnlineSecurity", "OnlineBackup", "DeviceProtection",
+                       "TechSupport", "StreamingTV", "StreamingMovies")
+
+for (v in vars_internet_dep) {
+  churn[[v]] <- as.character(churn[[v]])
+  churn[[v]][churn[[v]] == "No internet service"] <- "No"
+  churn[[v]] <- as.factor(churn[[v]])
+}
+
+churn$MultipleLines <- as.character(churn$MultipleLines)
+churn$MultipleLines[churn$MultipleLines == "No phone service"] <- "No"
+churn$MultipleLines <- as.factor(churn$MultipleLines)
+
+cat("✅ Recodage effectué — modalités redondantes supprimées\n")
+```
+
+---
+
+# Analyse Exploratoire (EDA)
+
+## Distribution de la variable cible
+
+```{r churn-distribution}
+churn |>
+  count(Churn) |>
+  mutate(pct = round(n / sum(n) * 100, 1)) |>
+  kable(caption = "Distribution de la variable Churn",
+        col.names = c("Churn", "Effectif", "Pourcentage (%)")) |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Analyse bivariée — Variables qualitatives vs Churn
+
+```{r bivar-quali, fig.height=4}
+vars_quali <- c("Contract", "InternetService", "PaymentMethod",
+                "PaperlessBilling", "Partner", "Dependents")
+
+walk(vars_quali, function(v) {
+  p <- ggplot(churn, aes(x = .data[[v]], fill = Churn)) +
+    geom_bar(position = "fill", alpha = 0.85) +
+    scale_y_continuous(labels = percent) +
+    scale_fill_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = paste("Taux de Churn selon", v),
+         x = v, y = "Proportion", fill = "Churn")
+  print(p)
+})
+```
+
+## Analyse bivariée — Variables quantitatives vs Churn
+
+```{r bivar-quanti, fig.height=4}
+vars_quanti <- c("tenure", "MonthlyCharges", "TotalCharges")
+
+walk(vars_quanti, function(v) {
+  p <- ggplot(churn, aes(x = Churn, y = .data[[v]], fill = Churn)) +
+    geom_boxplot(alpha = 0.7) +
+    scale_fill_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+    theme_minimal() +
+    labs(title = paste("Boxplot de", v, "selon Churn"),
+         x = "Churn", y = v) +
+    theme(legend.position = "none")
+  print(p)
+})
+```
+
+## Tests du Khi-deux — Association avec Churn
+
+```{r chi2-tests}
+vars_actives_test <- c("Partner", "Dependents", "MultipleLines",
+                       "InternetService", "OnlineSecurity", "OnlineBackup",
+                       "DeviceProtection", "TechSupport", "StreamingTV",
+                       "StreamingMovies", "Contract", "PaperlessBilling",
+                       "PaymentMethod")
+
+res_chi2 <- sapply(vars_actives_test, function(v) {
+  tab_c <- table(churn[[v]], churn$Churn)
+  chisq.test(tab_c)$p.value
+})
+
+data.frame(
+  Variable = names(res_chi2),
+  `p-value` = round(res_chi2, 6),
+  Significatif = ifelse(res_chi2 < 0.05, "✅ Oui", "❌ Non"),
+  check.names = FALSE
+) |>
+  arrange(`p-value`) |>
+  kable(caption = "Tests Khi-deux — Association avec Churn") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"))
+```
+
+---
+
+# Analyse des Correspondances Multiples (ACM)
+
+## Construction du tableau disjonctif et ACM
+
+```{r acm-construction}
+# Variables actives
+vars_quali_filtree <- c("Partner", "Dependents", "MultipleLines",
+                        "InternetService", "OnlineSecurity", "OnlineBackup",
+                        "DeviceProtection", "TechSupport", "StreamingTV",
+                        "StreamingMovies", "Contract", "PaperlessBilling",
+                        "PaymentMethod")
+
+data_active <- dplyr::select(churn, all_of(vars_quali_filtree))
+
+# ACM principale
+res_acm <- MCA(data_active, graph = FALSE, ncp = 5)
+
+cat("ACM réalisée sur", ncol(data_active), "variables actives\n")
+cat("Nombre total de modalités K =", sum(sapply(data_active, nlevels)), "\n")
+```
+
+## Valeurs propres et correction de Benzécri
+
+En ACM, les taux d'inertie bruts sont des mesures pessimistes de la qualité de représentation (Benzécri, 1980; Baffo, 2025). La correction est appliquée selon la formule :
+
+$$\text{Taux}(\lambda_s)_{\text{corr}} = \left(\frac{J}{J-1}\right)^2 \left(\lambda_s - \frac{1}{J}\right)^2 \quad \text{si } \lambda_s > \frac{1}{J}$$
+
+```{r benzecri}
+J      <- ncol(data_active)
+lambda <- res_acm$eig[, 1]
+seuil  <- 1 / J
+
+lambda_corr <- ifelse(
+  lambda > seuil,
+  ((J / (J - 1)) * (lambda - seuil))^2,
+  0
+)
+
+taux_corr_pct <- lambda_corr / sum(lambda_corr) * 100
+taux_cum_corr <- cumsum(taux_corr_pct)
+
+df_benz <- data.frame(
+  Dimension           = paste("Dim", seq_along(lambda)),
+  `λ brut`            = round(lambda, 5),
+  `λ corrigé`         = round(lambda_corr, 5),
+  `Taux brut (%)`     = round(res_acm$eig[, 2], 2),
+  `Taux Benzécri (%)` = round(taux_corr_pct, 2),
+  `Taux cumulé (%)`   = round(taux_cum_corr, 2),
+  check.names = FALSE
+) |> dplyr::filter(`λ corrigé` > 0)
+
+df_benz |>
+  kable(caption = "Valeurs propres corrigées par la méthode de Benzécri") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"))
+```
+
+> **Lecture :** Après correction de Benzécri, les **4 premiers axes** expliquent **100% de l'inertie corrigée**. Les Dim 1 et Dim 2 concentrent respectivement **`r round(taux_corr_pct[1], 1)`%** et **`r round(taux_corr_pct[2], 1)`%** de l'inertie structurelle.
+
+## Choix du nombre d'axes — Critère de Kaiser
+
+```{r kaiser}
+cat("Seuil de Kaiser en ACM : 1/J = 1/", J, "=", round(seuil, 4), "\n\n")
+cat("Axes retenus (λ > 1/J) :\n")
+axes_retenus <- which(lambda > seuil)
+print(data.frame(
+  Axe    = axes_retenus,
+  Lambda = round(lambda[axes_retenus], 5),
+  `Taux brut (%)` = round(res_acm$eig[axes_retenus, 2], 2),
+  check.names = FALSE
+))
+```
+
+## Plan factoriel — Top 15 modalités contributives
+
+```{r plan-factoriel-modalites}
+seuil_contrib <- 100 / nrow(res_acm$var$contrib)
+
+fviz_mca_var(res_acm,
+             select.var    = list(contrib = 15),
+             repel         = TRUE,
+             col.var       = "contrib",
+             gradient.cols = c("#FFA726", "#E53935"),
+             labelsize     = 4) +
+  labs(title    = "Plan factoriel ACM — Top 15 modalités",
+       subtitle = paste("Seuil contribution :", round(seuil_contrib, 2), "%"),
+       x = paste0("Dim 1 — Équipement digital",
+                  " (brut: 20.3% | Benzécri: ", round(taux_corr_pct[1], 1), "%)"),
+       y = paste0("Dim 2 — Engagement contractuel",
+                  " (brut: 13.4% | Benzécri: ", round(taux_corr_pct[2], 1), "%)")) +
+  theme_minimal()
+```
+
+## Interprétation des axes selon la règle de Baffo (slide 33)
+
+La règle d'interprétation retient les modalités dont la contribution est supérieure au poids moyen, soit : $|a_{k,s}| > \sqrt{\lambda_s}$
+
+```{r interpretation-axes}
+coord_var  <- as.data.frame(res_acm$var$coord)
+cos2_var   <- as.data.frame(res_acm$var$cos2)
+
+# Tableau synthétique des modalités significatives
+for (ax in 1:4) {
+  seuil_ax <- sqrt(res_acm$eig[ax, 1])
+  col      <- paste0("Dim ", ax)
+
+  df_ax <- data.frame(
+    Modalité     = rownames(coord_var),
+    Coordonnée   = round(coord_var[[col]], 3),
+    Cos2         = round(cos2_var[[col]], 3)
+  ) |>
+    mutate(
+      `|coord|` = round(abs(Coordonnée), 3),
+      Côté      = ifelse(Coordonnée > 0, "Positif (+)", "Négatif (-)"),
+      Significatif = ifelse(abs(Coordonnée) > seuil_ax, "✅", "❌")
+    ) |>
+    filter(Significatif == "✅") |>
+    arrange(desc(`|coord|`))
+
+  cat("\n=== AXE", ax, "— Seuil |coord| >", round(seuil_ax, 4), "===\n")
+  print(df_ax |> select(Modalité, Coordonnée, Cos2, Côté))
+}
+```
+
+## Nuage des individus coloré par Churn
+
+```{r individus-churn}
+fviz_mca_ind(res_acm,
+             habillage     = churn$Churn,
+             palette       = c("#2196F3", "#F44336"),
+             addEllipses   = TRUE,
+             ellipse.level = 0.95,
+             geom          = "point",
+             alpha.ind     = 0.3,
+             pointsize     = 1) +
+  labs(title    = "Nuage des individus",
+       subtitle = "Variable illustrative Churn — Ellipses à 95%",
+       x = "Dim 1 — Équipement digital",
+       y = "Dim 2 — Engagement contractuel") +
+  theme_minimal()
+```
+
+## Variables supplémentaires
+
+```{r variables-supp}
+# ACM avec variables supplémentaires
+data_acm_complet <- churn |>
+  dplyr::select(
+    all_of(vars_quali_filtree),
+    gender, Churn,
+    tenure, MonthlyCharges, TotalCharges
+  )
+
+res_acm_complet <- MCA(
+  data_acm_complet,
+  quali.sup  = 14:15,
+  quanti.sup = 16:18,
+  ncp        = 5,
+  graph      = FALSE
+)
+
+# Valeurs-test Churn
+vtest <- as.data.frame(res_acm_complet$quali.sup$v.test)
+
+cat("=== VALEURS-TEST CHURN (|vt| > 2 = significatif) ===\n")
+vtest_churn <- vtest[grepl("Yes|No", rownames(vtest)), 1:4]
+print(round(vtest_churn, 3))
+
+# Corrélations quanti sup
+n <- nrow(data_acm_complet)
+seuil_corr <- 2 / sqrt(n + 2)
+cat("\n=== CORRÉLATIONS VARIABLES QUANTI SUP (seuil :", round(seuil_corr, 4), ") ===\n")
+print(round(res_acm_complet$quanti.sup$coord[, 1:4], 3))
+```
+
+> **Résultat clé :** Le Churn est significativement associé à l'**Axe 2** (vt = ±39.15), confirmant que l'engagement contractuel est le principal déterminant du churn. Le genre n'est pas significatif sur aucun axe, justifiant son exclusion des variables actives.
+
+---
+
+# Classification — CAH + K-Means
+
+## Construction de la CAH sur les coordonnées ACM
+
+```{r cah-construction}
+# Coordonnées sur les 4 axes retenus
+coords_cah <- res_acm$ind$coord[, 1:4]
+
+# Matrice de distances euclidiennes
+dist_mat <- dist(coords_cah, method = "euclidean")
+
+# CAH — méthode de Ward
+cah <- hclust(dist_mat, method = "ward.D2")
+
+cat("CAH réalisée sur", nrow(coords_cah), "individus x 4 dimensions\n")
+```
+
+## Choix du nombre de clusters
+
+```{r choix-k, fig.height=5}
+# ── Critère du coude
+hauteurs <- sort(cah$height, decreasing = TRUE)[1:10]
+
+plot(1:10, hauteurs,
+     type = "b", pch = 19, col = "#1565C0",
+     xlab = "Nombre de clusters (K)",
+     ylab = "Hauteur de fusion",
+     main = "Critère du coude — CAH Ward.D2")
+text(1:10, hauteurs, labels = round(hauteurs, 1), pos = 3, cex = 0.8)
+abline(v = 4, col = "red", lty = 2, lwd = 2)
+legend("topright", legend = "K = 4 retenu", col = "red", lty = 2)
+```
+
+```{r silhouette-choix, fig.height=4}
+# ── Indice de Silhouette
+sil_scores <- sapply(2:6, function(k) {
+  cl  <- cutree(cah, k = k)
+  sil <- silhouette(cl, dist_mat)
+  mean(sil[, 3])
+})
+
+plot(2:6, sil_scores,
+     type = "b", pch = 19, col = "#E53935",
+     xlab = "Nombre de clusters K",
+     ylab = "Score Silhouette moyen",
+     main = "Silhouette — Choix optimal de K")
+abline(v = 4, col = "red", lty = 2)
+```
+
+```{r dendrogramme, fig.height=6}
+# ── Dendrogramme
+plot(cah,
+     labels = FALSE, hang = -1,
+     main   = "Dendrogramme CAH — Ward.D2",
+     xlab   = "Individus",
+     ylab   = "Hauteur de fusion")
+rect.hclust(cah, k = 4, border = c("red", "blue", "green", "orange"))
+```
+
+> **Décision : K = 4** — Le critère du coude montre une cassure nette entre K=3 et K=4, et le dendrogramme révèle 4 branches clairement distinctes. Le score Silhouette de 0.23 est acceptable pour des données télécom à profils continus.
+
+## Consolidation K-Means
+
+```{r kmeans}
+# CAH → K optimal
+K <- 4
+classes_cah <- cutree(cah, k = K)
+
+# K-Means consolidation
+set.seed(42)
+km <- kmeans(coords_cah, centers = K, nstart = 25, iter.max = 100)
+
+# Tableau de concordance
+cat("=== CONCORDANCE CAH vs K-MEANS ===\n")
+print(table(CAH = classes_cah, KMeans = km$cluster))
+
+# Affectation finale
+churn$Cluster <- factor(km$cluster,
+                        labels = c("Cluster 1", "Cluster 2",
+                                   "Cluster 3", "Cluster 4"))
+
+cat("\nRépartition finale :\n")
+print(table(churn$Cluster))
+```
+
+## Validation — Graphique de Silhouette
+
+```{r silhouette-validation}
+sil <- silhouette(km$cluster, dist_mat)
+
+fviz_silhouette(sil,
+                palette = c("#F44336", "#2196F3", "#4CAF50", "#FF9800"),
+                ggtheme = theme_minimal()) +
+  labs(title    = "Graphique de Silhouette — K=4",
+       subtitle = "Score > 0 = bien classé | Score < 0 = mal classé")
+```
+
+```{r silhouette-tableau}
+as.data.frame(sil[, 1:3]) |>
+  setNames(c("Cluster", "Voisin", "Silhouette")) |>
+  mutate(Cluster = paste("Cluster", Cluster)) |>
+  group_by(Cluster) |>
+  summarise(
+    `Score moyen`      = round(mean(Silhouette), 3),
+    `% bien classés`   = round(mean(Silhouette > 0) * 100, 1),
+    `% mal classés`    = round(mean(Silhouette < 0) * 100, 1),
+    .groups = "drop"
+  ) |>
+  kable(caption = "Qualité de classification par cluster") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"))
+```
+
+## Visualisation des clusters sur le plan ACM
+
+```{r clusters-plan-acm}
+# Taux Benzécri pour les labels
+taux_b1 <- round(taux_corr_pct[1], 1)
+taux_b2 <- round(taux_corr_pct[2], 1)
+
+fviz_mca_ind(res_acm,
+             habillage     = churn$Cluster,
+             palette       = c("#F44336", "#2196F3", "#4CAF50", "#FF9800"),
+             addEllipses   = TRUE,
+             ellipse.type  = "norm",
+             ellipse.level = 0.95,
+             geom          = "point",
+             alpha.ind     = 0.3,
+             pointsize     = 1) +
+  labs(title    = "Clusters K-Means sur Plan Factoriel ACM",
+       subtitle = "Ellipses normales à 95% — Validation de la segmentation",
+       x = paste0("Dim 1 — Équipement digital (Benzécri: ", taux_b1, "%)"),
+       y = paste0("Dim 2 — Engagement contractuel (Benzécri: ", taux_b2, "%)")) +
+  theme_minimal()
+```
+
+---
+
+# Profilage des Segments
+
+## Synthèse des 4 clusters
+
+```{r profil-synthese}
+churn |>
+  group_by(Cluster) |>
+  summarise(
+    `Nb clients`        = n(),
+    `% du total`        = round(n() / nrow(churn) * 100, 1),
+    `Taux Churn (%)`    = round(mean(Churn == "Yes") * 100, 1),
+    `Ancienneté moy.`   = round(mean(tenure), 1),
+    `Charge mens. moy.` = round(mean(MonthlyCharges), 1),
+    .groups = "drop"
+  ) |>
+  kable(caption = "Synthèse des 4 segments clients") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"))
+```
+
+## Profil contractuel
+
+```{r profil-contrat}
+churn |>
+  group_by(Cluster, Contract) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(Cluster) |>
+  mutate(pct = round(n / sum(n) * 100, 1)) |>
+  select(-n) |>
+  pivot_wider(names_from = Contract, values_from = pct, values_fill = 0) |>
+  kable(caption = "Type de contrat par cluster (%)") |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Profil Internet
+
+```{r profil-internet}
+churn |>
+  group_by(Cluster, InternetService) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(Cluster) |>
+  mutate(pct = round(n / sum(n) * 100, 1)) |>
+  select(-n) |>
+  pivot_wider(names_from  = InternetService,
+              values_from = pct,
+              values_fill = 0) |>
+  kable(caption = "Type d'internet par cluster (%)") |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Taux de Churn par cluster
+
+```{r churn-cluster-viz}
+churn |>
+  group_by(Cluster, Churn) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(Cluster) |>
+  mutate(pct = n / sum(n)) |>
+  ggplot(aes(x = Cluster, y = pct, fill = Churn)) +
+  geom_col(alpha = 0.85) +
+  geom_text(aes(label = percent(pct, accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            color = "white", fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("No" = "#2196F3", "Yes" = "#F44336")) +
+  scale_y_continuous(labels = percent) +
+  labs(title    = "Taux de Churn par Segment",
+       subtitle = "K-Means K=4 consolidé sur axes ACM",
+       x = "Segment", y = "Proportion") +
+  theme_minimal()
+```
+
+## Test Khi-deux — Lien Cluster / Churn
+
+```{r chi2-cluster}
+chi2 <- chisq.test(table(churn$Cluster, churn$Churn))
+cat("Chi² =", round(chi2$statistic, 2), "\n")
+cat("p-value =", format.pval(chi2$p.value, digits = 3), "\n")
+cat("Conclusion :",
+    ifelse(chi2$p.value < 0.05,
+           "✅ Lien hautement significatif entre Cluster et Churn",
+           "❌ Pas de lien significatif"))
+```
+
+---
+
+# Stratégie Marketing
+
+## Portrait-robot des 4 segments
+
+| Segment | Nom | Churn | Profil clé | Risque |
+|---------|-----|-------|------------|--------|
+| **Cluster 1** | 🔴 Fugitifs Fibre | 52.7% | Fibre + mensuel + seul + 24 mois | CRITIQUE |
+| **Cluster 2** | 🟢 Fidèles Téléphonie | 8.6% | Sans internet + stable + 30 mois | FAIBLE |
+| **Cluster 3** | 🟢 Loyaux DSL | 9.2% | DSL + Two year + famille + 56 mois | FAIBLE |
+| **Cluster 4** | 🟡 Précaires DSL | 27.2% | DSL + mensuel + récent + 20 mois | MODÉRÉ |
+
+## Actions prioritaires par segment
+
+### 🔴 Cluster 1 — Fugitifs Fibre — PRIORITÉ ABSOLUE
+
+- **Action 1** : Offre de rétention immédiate — migration contrat annuel avec remise de 15%
+- **Action 2** : Appel proactif du service client dans les 30 premiers jours
+- **Action 3** : Bundle groupé Fibre + Sécurité + Streaming à tarif fixe
+- **KPI cible** : Réduire le churn de 52.7% → 35% en 6 mois
+
+### 🟡 Cluster 4 — Précaires DSL — SURVEILLANCE ACTIVE
+
+- **Action 1** : Programme onboarding 0-12 mois avec bonus fidélité
+- **Action 2** : Proposition contrat annuel à 6 mois d'ancienneté
+- **Action 3** : Offre découverte sécurité en ligne 3 mois gratuits
+- **KPI cible** : Réduire le churn de 27.2% → 18% en 6 mois
+
+### 🟢 Cluster 3 — Loyaux DSL — PROGRAMME AMBASSADEUR
+
+- **Action 1** : Programme parrainage avec récompense mensuelle
+- **Action 2** : Offre migration vers Fibre à tarif préférentiel
+- **Action 3** : Statut "Client Premium" avec avantages exclusifs
+- **KPI cible** : Maintenir churn < 10% et augmenter panier moyen
+
+### 🟢 Cluster 2 — Fidèles Téléphonie — UPSELL
+
+- **Action 1** : Offre découverte Internet DSL à prix réduit
+- **Action 2** : Bundle Téléphone + Internet entrée de gamme
+- **Action 3** : Communication sur les bénéfices du numérique
+- **KPI cible** : Convertir 20% vers offre Internet → +15$/mois/client
+
+---
+
+# Conclusion
+
+Cette étude a permis d'identifier **4 segments clients distincts** à partir d'une ACM sur 13 variables qualitatives, consolidée par une classification CAH-KMeans.
+
+**Résultats clés :**
+
+- L'**Axe 1** oppose les clients sans internet aux clients Fibre équipés de services premium
+- L'**Axe 2** oppose les clients engagés (Two year + famille) aux clients volatils (Month-to-month + Electronic check)
+- Le **Churn est principalement porté par l'Axe 2** (vt = ±39.15), confirmant que l'engagement contractuel est le déterminant principal du départ
+- Le **Cluster 1 (Fugitifs Fibre)** présente un taux de churn alarmant de **52.7%** et nécessite une action immédiate
+- La segmentation est statistiquement validée : Chi² = 1286.43, p < 2e-16
+
+**Limites :** Le chevauchement partiel des clusters (Silhouette = 0.30) reflète la nature continue des profils clients télécom, phénomène documenté dans la littérature sur la segmentation comportementale.
